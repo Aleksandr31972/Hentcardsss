@@ -1,0 +1,175 @@
+import telebot
+import random
+from telebot import types
+from datetime import datetime, timedelta
+
+bot = telebot.TeleBot('6694236697:AAGiGT92Tmo87rm-eROFptM-BdQL0Uy32O8')
+
+
+def create_users_table():
+    conn = sqlite3.connect("mydatabase.db")
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER,
+            username TEXT,
+            first_name TEXT,
+            last_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cards (
+            id INTEGER PRIMARY KEY,
+            userId INTEGER,
+            FOREIGN KEY (userId) REFERENCES users (id)
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+
+def user_exists(user_id):
+    conn = sqlite3.connect("mydatabase.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM users WHERE user_id = ?", (user_id,))
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count > 0
+
+
+def insert_user(user_id, username, first_name, last_name):
+    if not user_exists(user_id):
+        conn = sqlite3.connect("mydatabase.db")
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO users (user_id, username, first_name, last_name) VALUES (?, ?, ?, ?)",
+                       (user_id, username, first_name, last_name))
+        conn.commit()
+        conn.close()
+        print(f"Чел с user_id {user_id} нету такого")
+    else:
+        print(f"Чел с user_id {user_id} есть такой")
+
+
+@bot.message_handler(commands=['start'])
+def handle_start(message):
+    user = message.from_user
+    user_id = user.id
+    username = user.username
+    first_name = user.first_name
+    last_name = user.last_name
+
+    insert_user(user_id, username, first_name, last_name)
+
+    bot.send_message(message.chat.id, f"💞Господин {user.first_name}! Для продолжения введите меню")
+
+
+@bot.message_handler(func=lambda message: message.text.lower() == 'меню')
+def handle_menu(message):
+    user = message.from_user
+    user_id = user.id
+    username = user.username
+    first_name = user.first_name
+    last_name = user.last_name
+
+    insert_user(user_id, username, first_name, last_name)
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    button = types.KeyboardButton("💦Получить девочку")
+    markup.add(button)
+
+    bot.send_message(message.chat.id, "💞Хозяин, что бы вы хотели?", reply_markup=markup)
+
+
+def get_card_info(card_name):
+    card_info = {
+        'Ямато': {
+            'name': 'Ямато',
+            'rarity': 'Легендарная',
+            'orgasm_power': 10000,
+            'stamina': 19000,
+            'value': 15000
+        },
+        'Луффи': {
+            'name': 'Луффи',
+            'rarity': 'Мифическая',  # Изменено на Мифическая
+            'orgasm_power': 17000,   # Изменено на 17000
+            'stamina': 19000,        # Изменено на 19000
+            'value': 27600            # Изменено на 27600
+        }
+    }
+
+    return card_info.get(card_name, None)
+
+
+cooldown_time = timedelta(seconds=60)
+user_cooldowns = {}
+
+
+@bot.message_handler(func=lambda message: message.text == '💦Получить девочку')
+def send_girl_photo(message):
+    user_id = message.from_user.id
+    current_time = datetime.now()
+    if user_id in user_cooldowns and (current_time - user_cooldowns[user_id]) < cooldown_time:
+        time_remaining = cooldown_time - (current_time - user_cooldowns[user_id])
+        minutes, seconds = divmod(time_remaining.seconds, 60)
+        time_str = f"⏳ {minutes}м. {seconds}с."
+        bot.send_message(message.chat.id,
+                         f"🃏🙅‍♂️ {message.from_user.first_name}, получать карточки можно раз в 60 секунд. "
+                         f"Приходи через:\n"
+                         f"➖➖➖➖➖➖\n"
+                         f"   {time_str}", disable_notification=True)
+    else:
+        user_cooldowns[user_id] = current_time
+        card_name = choose_card()  # Выбираем случайную карту
+        card_info = get_card_info(card_name)  # Получаем информацию о карте
+        if card_info:
+            chosen_card = card_info['name']
+            description = (f"<b>❤️‍🔥 {chosen_card}</b>\n"
+                           f"\n<i>🔥 Редкость:</i> {card_info['rarity']}\n"
+                           f"<i>🥵 Сила оргазма:</i> {card_info['orgasm_power']}\n"
+                           f"<i>💨 Выносливость:</i> {card_info['stamina']}\n"
+                           f"\n💠 <b>Ценность:</b> {card_info['value']} pt")
+            photo_path = None
+            if chosen_card == 'Ямато':
+                photo_path = r'C:\Users\ip301\Documents\Lightshot\yamato.jpg'
+            elif chosen_card == 'Луффи':
+                photo_path = r'C:\Users\ip301\Documents\Lightshot\luffy.jpg'
+
+            if photo_path:
+                try:
+                    with open(photo_path, 'rb') as photo:
+                        bot.send_photo(message.chat.id, photo, caption=description, parse_mode='HTML',
+                                       disable_notification=True)
+                except Exception as e:
+                    print(f"Ошибка при отправке изображения: {e}")
+            else:
+                print(f"Изображение для {chosen_card} не найдено.")
+
+
+cards = [
+    {'name': 'Мифическая', 'chance': 0.01},
+    {'name': 'Легендарная', 'chance': 0.07},  # Изменено на 7%
+    {'name': 'Эпическая', 'chance': 0.18},    # Изменено на 18%
+    {'name': 'Редкая', 'chance': 0.29},      # Изменено на 29%
+    {'name': 'Обычная', 'chance': 0.45},    # Изменено на 45%
+    {'name': 'Ямато', 'chance': 0.07},
+    {'name': 'Луффи', 'chance': 0.01},  # Добавлено для карты "Луффи" с шансом 7%
+]
+
+
+# Функция для выбора карты с учетом вероятности
+def choose_card():
+    rand_num = random.random()  # Генерируем случайное число от 0 до 1
+    cumulative_chance = 0  # Накопительная вероятность
+
+    for card in cards:
+        cumulative_chance += card['chance']  # Увеличиваем накопительную вероятность
+        if rand_num < cumulative_chance:  # Если случайное число меньше накопительной вероятности
+            return card['name']  # Возвращаем имя карты
+
+
+if __name__ == "__main__":
+    create_users_table()
+    bot.polling(none_stop=True)
